@@ -1,18 +1,22 @@
 from chains.core_chain import handle_user_query
-from flask import Flask
-app = Flask(__name__)
+from flask import Flask, request, jsonify
 from dotenv import load_dotenv
+import os
 
-def main():
-    load_dotenv()
-    print("🤖 Welcome to Aarogyaa Bharat Chatbot! Type 'exit' to quit.")
-    while True:
-        query = input("You: ")
-        if query.lower() == "exit":
-            print("Bot: Goodbye!")
-            break
-        response = handle_user_query(query)
-        print("Bot:", response)
+load_dotenv()
 
-if __name__ == "__main__":
-    main()
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "🤖 Aarogyaa Bharat Chatbot is running!"
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.get_json()
+    query = data.get("query")
+    if not query:
+        return jsonify({"error": "Missing 'query' in request"}), 400
+
+    response = handle_user_query(query)
+    return jsonify({"response": response})
