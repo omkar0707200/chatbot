@@ -1,5 +1,8 @@
 flask
 gunicorn
 requests
-beautifulsoup4
-pandas
+fuzzywuzzy
+python-Levenshtein
+inflect
+python-dotenv
+symspellpy
