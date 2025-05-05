@@ -1,4 +1,6 @@
 from chains.core_chain import handle_user_query
+from flask import Flask
+app = Flask(__name__)
 from dotenv import load_dotenv
 
 def main():
