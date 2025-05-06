@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from flask_cors import CORS
 import os
 
+from utils.fallback_llm import get_fallback_response
+
 load_dotenv()
 
 app = Flask(__name__)
