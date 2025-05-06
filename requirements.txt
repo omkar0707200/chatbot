@@ -6,3 +6,4 @@ python-Levenshtein
 inflect
 python-dotenv
 symspellpy
+flask-cors
