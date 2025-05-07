@@ -7,4 +7,3 @@ inflect
 python-dotenv
 symspellpy
 flask-cors
-re
