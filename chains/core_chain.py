@@ -148,7 +148,7 @@ def handle_user_query(query):
     elif intent in ["price", "features", "why_choose", "usage"]:
         context["pending_ai_query"] = corrected_query
         save_context(context)
-        return "I couldn’t find a matching product. Would you like me to ask the AI assistant for help?"
+        return "I Don't know how to help you with that. Would you like me to ask the AI assistant for help?"
 
     else:
         if context.get("last_product") and intent != "general":
@@ -159,7 +159,7 @@ def handle_user_query(query):
     if not matched_products and selected_product is None:
         context["pending_ai_query"] = corrected_query
         save_context(context)
-        return "I couldn’t find a matching product. Would you like me to ask the AI assistant for help?"
+        return "I Don't know how to help you with that. Would you like me to ask the AI assistant for help?"
 
     if intent != "general" and selected_product:
         value = get_product_attribute(selected_product, intent)
@@ -179,4 +179,4 @@ def handle_user_query(query):
             f"Description: {selected_product.get('description', '')[:150]}...\n"
         )
 
-    return "I couldn’t find a matching product. Would you like me to ask the AI assistant for help?"
+    return "I Don't know how to help you with that. Would you like me to ask the AI assistant for help?"
