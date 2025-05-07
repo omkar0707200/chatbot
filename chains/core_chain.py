@@ -3,9 +3,8 @@ import os
 from api_handlers.product import search_products_by_keywords
 from utils.fallback_llm import get_fallback_response
 from utils.spell_corrector import correct_text
-from utils.cms_responses import CMS_RESPONSES
-from utils.cms_responses import CMS_SYNONYMS
-
+from utils.cms_responses import CMS_RESPONSES, CMS_SYNONYMS
+from utils.intent_classifier import classify_intent  # NEW import
 
 CONTEXT_FILE = "data/context_memory.json"
 
@@ -69,9 +68,32 @@ def format_product_list(products):
 
 def handle_user_query(query):
     context = load_context()
-    intent = extract_intent(query)
 
-    # Handle: "select option 2" or just "2"
+    # Step 1: Correct spelling
+    corrected_query = correct_text(query)
+    print(f"🔎 Corrected Query: {corrected_query}")
+
+    # Step 2: High-level intent classification
+    intent_type = classify_intent(corrected_query)
+    if intent_type == "greeting":
+        return (
+            "👋 Hello! I’m your Aarogyaa Bharat assistant.\n\n"
+            "You can ask me about:\n"
+            "- 🏷️ Product prices\n"
+            "- 🚚 Delivery & return policy\n"
+            "- 🛠️ Installation & warranty\n"
+            "- 💬 Any medical equipment query\n\n"
+            "What would you like to know?"
+        )
+    elif intent_type == "small_talk":
+        return (
+            "🤖 I’m an AI built to help you with medical products, prices, and support.\n"
+            "Try asking things like: *What’s the price of a wheelchair?* or *Do you accept COD?*"
+        )
+
+    intent = extract_intent(corrected_query)
+
+    # Step 3: Handle selection of multiple products
     if query.lower().startswith("select option") or query.strip().isdigit():
         try:
             option_number = int(query.strip().split()[-1])
@@ -89,24 +111,20 @@ def handle_user_query(query):
         except:
             return "❌ Invalid selection. Try `select option 2` or just type the number."
 
-    # Handle AI confirmation
+    # Step 4: AI fallback confirmation
     if intent == "ai_confirm" and context.get("pending_ai_query"):
         ai_response = get_fallback_response(context["pending_ai_query"])
         context["pending_ai_query"] = None
         save_context(context)
         return f"🤖 AI says:\n{ai_response}"
 
-    corrected_query = correct_text(query)
-    print(f"🔎 Corrected Query: {corrected_query}")
-
-    # ✅ Check for predefined CMS responses
-    # ✅ Synonym-based CMS intent detection
+    # Step 5: Check for CMS responses
     cms_query = corrected_query.lower()
     for phrase, key in CMS_SYNONYMS.items():
         if phrase in cms_query and key in CMS_RESPONSES:
             return CMS_RESPONSES[key]
 
-
+    # Step 6: Search for products
     keywords_only = extract_product_keywords(corrected_query)
     matched_products = search_products_by_keywords(keywords_only)
 
