@@ -23,18 +23,23 @@ def fetch_products():
 
 def normalize_query(query):
     """
-    Normalize input to handle plural → singular and remove filler words.
+    Normalize input query by:
+    - Lowercasing
+    - Removing filler words
+    - Singularizing plural nouns
     """
     query = query.lower()
     query = re.sub(r'\bof\b', '', query)  # remove "of"
-    query = re.sub(r'\s+', ' ', query).strip()  # remove extra spaces
+    query = re.sub(r'\s+', ' ', query).strip()  # normalize spaces
 
-    # Singularize each word (e.g., diapers → diaper)
     words = query.split()
     singular_words = [p.singular_noun(w) if p.singular_noun(w) else w for w in words]
     return " ".join(singular_words)
 
 def fuzzy_match_score(product, query):
+    """
+    Returns the best fuzzy score among name, title, and partial description.
+    """
     name = product.get("name", "")
     title = product.get("title", "")
     description = product.get("description", "")
@@ -45,44 +50,38 @@ def fuzzy_match_score(product, query):
 
     return max(name_score, title_score, desc_score)
 
-def search_products_by_keywords(query, threshold=60, score_margin=10, top_n=5):
+def search_products_by_keywords(query, threshold=70, top_n=5):
     query = normalize_query(query)
-    products = fetch_products()
-    fuzzy_scored = []
-    keyword_hits = []
-
     query_words = set(query.split())
+    products = fetch_products()
+    strong_matches = []
 
     for product in products:
+        name = product.get("name", "").lower()
+        title = product.get("title", "").lower()
+        name_title = f"{name} {title}"
+
         score = fuzzy_match_score(product, query)
 
-        # Combine fuzzy score + keyword inclusion
-        text_blob = (
-            f"{product.get('name', '')} {product.get('title', '')} "
-            f"{product.get('description', '')} {product.get('features', '')}"
-        ).lower()
+        # Only allow fuzzy match if it's in name/title
+        valid_fuzzy = score >= threshold and any(word in name_title for word in query_words)
 
-        keyword_match = any(word in text_blob for word in query_words)
+        # All query words match name/title directly
+        keyword_exact = all(word in name_title for word in query_words)
 
-        # Add if fuzzy score is high OR keyword present
-        if score >= threshold or keyword_match:
-            fuzzy_scored.append((score, product))
+        if valid_fuzzy or keyword_exact:
+            strong_matches.append((score, product))
 
-    if not fuzzy_scored:
-        return []
+    strong_matches.sort(key=lambda x: x[0], reverse=True)
 
-    # Sort by score descending
-    fuzzy_scored.sort(key=lambda x: x[0], reverse=True)
-
-    # Return top N matching products (de-duped by title)
-    seen = set()
-    result = []
-    for score, prod in fuzzy_scored:
+    seen_titles = set()
+    final = []
+    for score, prod in strong_matches:
         title = prod.get("title", "")
-        if title not in seen:
-            result.append(prod)
-            seen.add(title)
-        if len(result) >= top_n:
+        if title not in seen_titles:
+            final.append(prod)
+            seen_titles.add(title)
+        if len(final) >= top_n:
             break
 
-    return result
+    return final
