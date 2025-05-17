@@ -104,8 +104,10 @@ def handle_user_query(query):
         else:
             return (
                 f"❌ Sorry, we currently do not deliver to pincode {pin}"
-                f"{f' in **{delivery_info['district']}**, **{delivery_info['state']}**' if delivery_info['district'] else ''}.\n"
-                f"💬 Please contact our support team for alternative options."
+               f" in **{delivery_info['district']}**, **{delivery_info['state']}**"
+                if delivery_info['district']
+                else ''
+                f" 💬 Please contact our support team for alternative options."
             )
 
     # 3. CHECK FOR DELIVERY-RELATED QUERY
