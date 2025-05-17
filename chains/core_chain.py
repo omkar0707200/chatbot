@@ -4,7 +4,8 @@ from api_handlers.product import search_products_by_keywords
 from utils.fallback_llm import get_fallback_response
 from utils.spell_corrector import correct_text
 from utils.cms_responses import CMS_RESPONSES, CMS_SYNONYMS
-from utils.intent_classifier import classify_intent  # NEW import
+from utils.intent_classifier import classify_intent
+from utils.pincode_checker import check_pincode_serviceability  # NEW
 
 CONTEXT_FILE = "data/context_memory.json"
 
@@ -21,7 +22,8 @@ def load_context():
     return {
         "last_product": None,
         "pending_ai_query": None,
-        "last_product_options": []
+        "last_product_options": [],
+        "expecting_pincode": False
     }
 
 def save_context(context):
@@ -31,7 +33,7 @@ def save_context(context):
 def extract_intent(query):
     query = query.lower()
     if "price" in query or "cost" in query or "how much" in query:
-        return "price"
+        return "our_price"
     elif "feature" in query:
         return "features"
     elif "why choose" in query or "why should i buy" in query:
@@ -60,24 +62,20 @@ def extract_product_keywords(corrected_query):
 def format_product_list(products):
     message = "🔍 I found multiple matching products:\n\n"
     for i, p in enumerate(products[:5], 1):
-        message += (
-            f"{i}. **{p['name']}** – ₹{p['our_price']}\n"
-            f"   {p['description'][:90]}...\n\n"
-        )
+        message += f"{i}. **{p['name']}** – ₹{p['our_price']}\n\n"
     return message.strip()
 
 def handle_user_query(query):
     context = load_context()
-
-    # Step 1: Correct spelling
     corrected_query = correct_text(query)
     print(f"🔎 Corrected Query: {corrected_query}")
+    query_lower = corrected_query.lower()
 
-    # Step 2: High-level intent classification
+    # 1. INTENT CLASSIFIER
     intent_type = classify_intent(corrected_query)
     if intent_type == "greeting":
         return (
-            "👋 Hello! I’m your Aarogyaa Bharat assistant.\n\n"
+            "👋 Namaste! I’m your Aarogyaa Bharat assistant.\n\n"
             "You can ask me about:\n"
             "- 🏷️ Product prices\n"
             "- 🚚 Delivery & return policy\n"
@@ -87,96 +85,112 @@ def handle_user_query(query):
         )
     elif intent_type == "small_talk":
         return (
-            "🤖 I’m an AI built to help you with medical products, prices, and support.\n"
-            "Try asking things like: *What’s the price of a wheelchair?* or *Do you accept COD?*"
+            "🤖 I’m your trusty bot, full of medical wisdom and witty puns.\n"
+            "Try me with a question like: *'Do you deliver in Pune?'* or *'Tell me about your refund policy'*!"
         )
 
-    intent = extract_intent(corrected_query)
+    # 2. HANDLE EXPECTING PINCODE
+    if context.get("expecting_pincode") and query.strip().isdigit() and len(query.strip()) == 6:
+        pin = query.strip()
+        delivery_info = check_pincode_serviceability(pin)
+        context["expecting_pincode"] = False
+        save_context(context)
 
-    # Step 3: Handle selection of multiple products
+        if delivery_info["deliverable"]:
+            return (
+                f"✅ Yes! We deliver to pincode {pin} in **{delivery_info['district']}**, **{delivery_info['state']}**.\n"
+                f"🛒 You can continue shopping with confidence!"
+            )
+        else:
+            return (
+                f"❌ Sorry, we currently do not deliver to pincode {pin}"
+                f"{f' in **{delivery_info['district']}**, **{delivery_info['state']}**' if delivery_info['district'] else ''}.\n"
+                f"💬 Please contact our support team for alternative options."
+            )
+
+    # 3. CHECK FOR DELIVERY-RELATED QUERY
+    if "deliver" in query_lower or "available in" in query_lower or "ship to" in query_lower:
+        context["expecting_pincode"] = True
+        save_context(context)
+        return "🚚 We deliver to most cities across India. Please share your *pincode* so I can check for you."
+
+    # 4. CHECK CMS/FAQ EXACT & SYNONYM
+    if query_lower.strip() in CMS_RESPONSES:
+        return CMS_RESPONSES[query_lower.strip()]
+
+    for phrase, key in CMS_SYNONYMS.items():
+        if phrase in query_lower and key in CMS_RESPONSES:
+            return CMS_RESPONSES[key]
+
+    # 5. PRODUCT SELECTION
     if query.lower().startswith("select option") or query.strip().isdigit():
         try:
-            option_number = int(query.strip().split()[-1])
-            selected = context.get("last_product_options", [])[option_number - 1]
+            index = int(query.strip().split()[-1]) - 1
+            selected = context.get("last_product_options", [])[index]
             context["last_product"] = selected["name"]
             context["last_product_options"] = []
             save_context(context)
             return (
                 f"**{selected['name']}**\n"
                 f"Price: ₹{selected.get('our_price', 'N/A')}\n\n"
-                f"**Description:** {selected.get('description', '')}\n\n"
                 f"**Features:** {selected.get('features', '')}\n\n"
                 f"**Why Choose:** {selected.get('why_choose', '')}"
             )
         except:
-            return "❌ Invalid selection. Try `select option 2` or just type the number."
+            return "⚠️ Invalid selection. Try `select option 1` or just type the number."
 
-    # Step 4: AI fallback confirmation
-    if intent == "ai_confirm" and context.get("pending_ai_query"):
+    # 6. AI FALLBACK CONFIRMATION
+    if extract_intent(corrected_query) == "ai_confirm" and context.get("pending_ai_query"):
         ai_response = get_fallback_response(context["pending_ai_query"])
         context["pending_ai_query"] = None
         save_context(context)
         return f"🤖 AI says:\n{ai_response}"
 
-    # Step 5: Check for CMS responses
-    cms_query = corrected_query.lower()
-    for phrase, key in CMS_SYNONYMS.items():
-        if phrase in cms_query and key in CMS_RESPONSES:
-            return CMS_RESPONSES[key]
+    # 7. PRODUCT SEARCH
+    intent = extract_intent(corrected_query)
+    keywords = extract_product_keywords(corrected_query)
+    matched = search_products_by_keywords(keywords)
+    selected = None
 
-    # Step 6: Search for products
-    keywords_only = extract_product_keywords(corrected_query)
-    matched_products = search_products_by_keywords(keywords_only)
-
-    selected_product = None
-
-    if matched_products:
-        context["last_product"] = matched_products[0]["name"]
+    if matched:
+        context["last_product"] = matched[0]["name"]
         context["pending_ai_query"] = None
 
-        # Save product options for selection
-        if len(matched_products) > 1 and intent in ["price", "general"]:
-            context["last_product_options"] = matched_products
+        if len(matched) > 1 and intent in ["our_price", "general"]:
+            context["last_product_options"] = matched
             save_context(context)
-            return format_product_list(matched_products)
+            return format_product_list(matched)
 
-        if len(matched_products) == 1:
-            selected_product = matched_products[0]
-
+        selected = matched[0]
         save_context(context)
 
-    elif intent in ["price", "features", "why_choose", "usage"]:
+    elif intent in ["our_price", "features", "why_choose", "usage"]:
         context["pending_ai_query"] = corrected_query
         save_context(context)
-        return "I Don't know how to help you with that. Would you like me to ask the AI assistant for help?"
+        return "🧠 That’s beyond my training! Want me to ask my AI cousin?"
 
-    else:
-        if context.get("last_product") and intent != "general":
-            memory_match = search_products_by_keywords(context["last_product"])
-            if memory_match:
-                selected_product = memory_match[0]
+    elif context.get("last_product") and intent != "general":
+        previous = search_products_by_keywords(context["last_product"])
+        if previous:
+            selected = previous[0]
 
-    if not matched_products and selected_product is None:
-        context["pending_ai_query"] = corrected_query
-        save_context(context)
-        return "I Don't know how to help you with that. Would you like me to ask the AI assistant for help?"
+    if selected:
+        if intent != "general":
+            value = get_product_attribute(selected, intent)
+            if value:
+                context["pending_ai_query"] = None
+                save_context(context)
+                return f"**{intent.replace('_', ' ').capitalize()} of {selected['name']}**:\n{value}"
+            else:
+                context["pending_ai_query"] = corrected_query
+                save_context(context)
+                return f"Couldn't find {intent} info for **{selected['name']}**. Want me to ask AI?"
 
-    if intent != "general" and selected_product:
-        value = get_product_attribute(selected_product, intent)
-        if value:
-            context["pending_ai_query"] = None
-            save_context(context)
-            return f"**{intent.capitalize()} of {selected_product['name']}**:\n{value}"
-        else:
-            context["pending_ai_query"] = corrected_query
-            save_context(context)
-            return f"I couldn’t find {intent} information for **{selected_product['name']}**. Want me to ask my AI assistant?"
-
-    if selected_product:
         return (
-            f"**{selected_product['name']}**\n"
-            f"Price: ₹{selected_product.get('our_price', 'N/A')}\n"
-            f"Description: {selected_product.get('description', '')[:150]}...\n"
+            f"**{selected['name']}**\n"
+            f"Price: ₹{selected.get('our_price', 'N/A')}"
         )
 
-    return "I Don't know how to help you with that. Would you like me to ask the AI assistant for help?"
+    context["pending_ai_query"] = corrected_query
+    save_context(context)
+    return "🧠 That went over my head like a flying stethoscope. Want me to ask the AI?"

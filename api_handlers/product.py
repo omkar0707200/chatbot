@@ -7,9 +7,10 @@ p = inflect.engine()
 
 def fetch_products():
     try:
-        response = requests.get("https://aarogyaabharat.com/api/product-info")
+        response = requests.get("http://aarogyaabharat.com/api/product-info")
         response.raise_for_status()
         data = response.json()
+
         if isinstance(data, list):
             return data
         elif isinstance(data, dict) and 'products' in data:

@@ -32,6 +32,6 @@ def get_fallback_response(prompt):
     except Exception as e:
         if '401' in str(e):
             return "⚠️ Unauthorized API access. Please check your HuggingFace token."
-    # print("Fallback LLM error:", e)
+    print("Fallback LLM error:", e)
     return "I'm having trouble accessing my knowledge. Please try again later."
 
