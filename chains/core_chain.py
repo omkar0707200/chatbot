@@ -89,13 +89,17 @@ def handle_user_query(user_input):
         save_context(context)
 
         if delivery_info["deliverable"]:
-            response = (
-                f"✅ Yes! We deliver to pincode {pin} in **{delivery_info['district']}**, **{delivery_info['state']}**."
+            return (
+                f"✅ Yes! We deliver to pincode {pin} in **{delivery_info['district']}**, **{delivery_info['state']}**.\n"
+                f"🛒 You can continue shopping with confidence!"
             )
         else:
-            response = (
-                f"❌ Sorry, we don’t deliver to pincode {pin}"
-                f"{f' in **{delivery_info['district']}**, **{delivery_info['state']}**' if delivery_info['district'] else ''}."
+            return (
+                f"❌ Sorry, we currently do not deliver to pincode {pin}"
+               f" in **{delivery_info['district']}**, **{delivery_info['state']}**"
+                if delivery_info['district']
+                else ''
+                f" 💬 Please contact our support team for alternative options."
             )
         log_conversation(user_input, response)
         return response
